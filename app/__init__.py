@@ -21,11 +21,13 @@ def create_app():
     app.config['SECRET_KEY'] = 'your-secret-key-123'
     
     # ===== SESSION COOKIE CONFIGURATION =====
+   
     app.config['SESSION_COOKIE_HTTPONLY'] = True
-    app.config['SESSION_COOKIE_SAMESITE'] = 'None'
-    app.config['SESSION_COOKIE_SECURE'] = True
-    app.config['REMEMBER_COOKIE_SECURE'] = True
-    app.config['REMEMBER_COOKIE_HTTPONLY'] = True
+    app.config['SESSION_COOKIE_SAMESITE'] = 'None'  # Para sa cross-site
+    app.config['SESSION_COOKIE_SECURE'] = True       # Para sa HTTPS
+    app.config['SESSION_COOKIE_DOMAIN'] = None       # Auto-detect
+    app.config['SESSION_COOKIE_PATH'] = '/'          # Available sa lahat ng paths
+    app.config['PERMANENT_SESSION_LIFETIME'] = 3600  # 1 hour (optional)
     
     # ===== MULTIPLE DATABASES CONFIGURATION =====
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///../instance/database.db'
