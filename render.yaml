@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: trip-tracking-backend
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn run:app
+    envVars:
+      - key: SECRET_KEY
+        value: your-secret-key-here
+      - key: DATABASE_URL
+        fromDatabase:
+          name: trip-tracking-db
+          property: connectionString
+
+databases:
+  - name: trip-tracking-db
+    databaseName: trips
+    user: postgres
