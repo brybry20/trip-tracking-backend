@@ -10,9 +10,24 @@ login_manager = LoginManager()
 
 def create_app():
     app = Flask(__name__)
-    CORS(app, supports_credentials=True)
+    
+    # ✅ CORS Setup - Tama na ito
+    CORS(app, supports_credentials=True, origins=[
+        "http://localhost:5173",
+        "https://trip-tracking-backend.onrender.com",
+        "https://trip-tracking-frontend.onrender.com"
+    ])
     
     app.config['SECRET_KEY'] = 'your-secret-key-123'
+    
+    # ===== SESSION COOKIE CONFIGURATION =====
+    # ✅ Importante para sa cross-origin requests (frontend to backend)
+    app.config['SESSION_COOKIE_HTTPONLY'] = True
+    app.config['SESSION_COOKIE_SAMESITE'] = 'None'  # Para sa cross-site requests
+    app.config['SESSION_COOKIE_SECURE'] = True       # Para sa HTTPS (production)
+    app.config['REMEMBER_COOKIE_SECURE'] = True
+    app.config['REMEMBER_COOKIE_HTTPONLY'] = True
+    # ========================================
     
     # ===== MULTIPLE DATABASES CONFIGURATION =====
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///../instance/database.db'  # Main DB
