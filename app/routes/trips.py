@@ -51,7 +51,7 @@ def create_trip():
     
     new_trip = Trip(
         driver_id=driver.id,
-        driver_name=driver.full_name,  # ✅ Kukunin sa database, hindi sa request
+        driver_name=driver.full_name,
         date=data['date'],
         helper=data['helper'],
         dealer=data['dealer'],
@@ -65,3 +65,57 @@ def create_trip():
     db.session.commit()
     
     return jsonify({'success': True, 'message': 'Trip saved successfully'})
+
+# ========== UPDATE TRIP ==========
+@trips_bp.route('/<int:trip_id>', methods=['PUT'])
+@login_required
+def update_trip(trip_id):
+    """Update an existing trip"""
+    try:
+        trip = Trip.query.get(trip_id)
+        if not trip:
+            return jsonify({'success': False, 'message': 'Trip not found'}), 404
+        
+        # Check if the trip belongs to the current driver
+        driver = Driver.query.filter_by(user_id=current_user.id).first()
+        if trip.driver_id != driver.id:
+            return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+        
+        data = request.get_json()
+        
+        # Update fields
+        trip.date = data.get('date', trip.date)
+        trip.helper = data.get('helper', trip.helper)
+        trip.dealer = data.get('dealer', trip.dealer)
+        trip.time_in = data.get('time_in', trip.time_in)
+        trip.time_out = data.get('time_out', trip.time_out)
+        trip.odometer = int(data.get('odometer', trip.odometer)) if data.get('odometer') else None
+        trip.invoice_no = data.get('invoice_no', trip.invoice_no)
+        
+        db.session.commit()
+        
+        return jsonify({'success': True, 'message': 'Trip updated successfully'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+# ========== DELETE TRIP ==========
+@trips_bp.route('/<int:trip_id>', methods=['DELETE'])
+@login_required
+def delete_trip(trip_id):
+    """Delete a trip"""
+    try:
+        trip = Trip.query.get(trip_id)
+        if not trip:
+            return jsonify({'success': False, 'message': 'Trip not found'}), 404
+        
+        # Check if the trip belongs to the current driver
+        driver = Driver.query.filter_by(user_id=current_user.id).first()
+        if trip.driver_id != driver.id:
+            return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+        
+        db.session.delete(trip)
+        db.session.commit()
+        
+        return jsonify({'success': True, 'message': 'Trip deleted successfully'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500

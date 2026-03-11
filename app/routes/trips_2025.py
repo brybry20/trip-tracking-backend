@@ -13,10 +13,8 @@ def get_trips_2025():
     """Get trips from 2025 database"""
     try:
         if current_user.role == 'admin':
-            # Admin can see all trips
             trips = Trip2025.query.all()
         else:
-            # Driver can only see their trips (convert username to uppercase for matching)
             driver_upper = current_user.username.upper()
             trips = Trip2025.query.filter_by(driver_name=driver_upper).all()
         
@@ -43,8 +41,63 @@ def get_trips_2025():
     except Exception as e:
         return jsonify({'error': str(e), 'database': 'historical_2025'}), 500
 
+# ========== UPDATE TRIP (2025) ==========
+@trips2025_bp.route('/trips/<int:trip_id>', methods=['PUT'])
+@login_required
+def update_trip_2025(trip_id):
+    """Update a 2025 trip"""
+    try:
+        trip = Trip2025.query.get(trip_id)
+        if not trip:
+            return jsonify({'success': False, 'message': 'Trip not found'}), 404
+        
+        # Check if the trip belongs to the current driver
+        if current_user.role == 'driver':
+            driver_upper = current_user.username.upper()
+            if trip.driver_name != driver_upper:
+                return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+        
+        data = request.get_json()
+        
+        # Update fields
+        trip.date = data.get('date', trip.date)
+        trip.helper = data.get('helper', trip.helper)
+        trip.dealer = data.get('dealer', trip.dealer)
+        trip.time_in = data.get('time_in', trip.time_in)
+        trip.time_out = data.get('time_out', trip.time_out)
+        trip.odometer = float(data.get('odometer', trip.odometer)) if data.get('odometer') else None
+        trip.invoice_no = data.get('invoice_no', trip.invoice_no)
+        
+        db.session.commit()
+        
+        return jsonify({'success': True, 'message': 'Trip updated successfully'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
 
-# ========== GET ALL DRIVERS ==========
+# ========== DELETE TRIP (2025) ==========
+@trips2025_bp.route('/trips/<int:trip_id>', methods=['DELETE'])
+@login_required
+def delete_trip_2025(trip_id):
+    """Delete a 2025 trip"""
+    try:
+        trip = Trip2025.query.get(trip_id)
+        if not trip:
+            return jsonify({'success': False, 'message': 'Trip not found'}), 404
+        
+        # Check if the trip belongs to the current driver
+        if current_user.role == 'driver':
+            driver_upper = current_user.username.upper()
+            if trip.driver_name != driver_upper:
+                return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+        
+        db.session.delete(trip)
+        db.session.commit()
+        
+        return jsonify({'success': True, 'message': 'Trip deleted successfully'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+# ========== GET ALL DRIVERS (2025) ==========
 @trips2025_bp.route('/drivers', methods=['GET'])
 @login_required
 def get_drivers_2025():
@@ -70,7 +123,6 @@ def get_drivers_2025():
     except Exception as e:
         return jsonify({'error': str(e), 'database': 'historical_2025'}), 500
 
-
 # ========== GET STATISTICS ==========
 @trips2025_bp.route('/stats', methods=['GET'])
 @login_required
@@ -80,19 +132,16 @@ def get_stats_2025():
         total_trips = Trip2025.query.count()
         total_drivers = Driver2025.query.count()
         
-        # Top drivers
         top_drivers = db.session.query(
             Trip2025.driver_name, 
             func.count(Trip2025.id).label('trip_count')
         ).group_by(Trip2025.driver_name).order_by(func.desc('trip_count')).limit(5).all()
         
-        # Top dealers
         top_dealers = db.session.query(
             Trip2025.dealer, 
             func.count(Trip2025.id).label('trip_count')
         ).group_by(Trip2025.dealer).order_by(func.desc('trip_count')).limit(5).all()
         
-        # Total kilometers
         total_km = db.session.query(func.sum(Trip2025.odometer)).scalar() or 0
         
         return jsonify({
@@ -106,7 +155,6 @@ def get_stats_2025():
         })
     except Exception as e:
         return jsonify({'error': str(e), 'database': 'historical_2025'}), 500
-
 
 # ========== SEARCH TRIPS ==========
 @trips2025_bp.route('/search', methods=['GET'])
@@ -130,7 +178,6 @@ def search_trips_2025():
         if date_to:
             query = query.filter(Trip2025.date <= date_to)
         
-        # Limit to 100 results for performance
         trips = query.limit(100).all()
         
         trips_list = []
@@ -155,7 +202,6 @@ def search_trips_2025():
         })
     except Exception as e:
         return jsonify({'error': str(e), 'database': 'historical_2025'}), 500
-
 
 # ========== GET TRIPS BY DRIVER ==========
 @trips2025_bp.route('/drivers/<string:driver_name>/trips', methods=['GET'])
@@ -187,7 +233,6 @@ def get_driver_trips_2025(driver_name):
         })
     except Exception as e:
         return jsonify({'error': str(e), 'database': 'historical_2025'}), 500
-
 
 # ========== GET DAILY SUMMARY ==========
 @trips2025_bp.route('/summary/daily', methods=['GET'])
