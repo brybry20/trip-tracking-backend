@@ -1,10 +1,11 @@
 import os
-from flask import Flask
+from flask import Flask, app
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
 from flask_cors import CORS
 from werkzeug.security import generate_password_hash
-
+from app.routes.health import health_bp
+app.register_blueprint(health_bp)
 db = SQLAlchemy()
 login_manager = LoginManager()
 
