@@ -3,10 +3,6 @@ from flask_login import login_required, current_user
 from app import db
 from app.models import Trip, Driver, Invoice, Check
 from datetime import datetime
-import pytz  # ✅ Import pytz for timezone handling
-
-# ✅ Set Philippines timezone
-PH_TIMEZONE = pytz.timezone('Asia/Manila')
 
 trips_bp = Blueprint('trips', __name__, url_prefix='/trips')
 
@@ -89,14 +85,15 @@ def create_trip():
         if not driver:
             return jsonify({'success': False, 'message': 'Driver profile not found'}), 404
         
-        # ✅ Get current time in Philippines (Asia/Manila)
-        now_ph = datetime.now(PH_TIMEZONE)
-        time_in_str = now_ph.strftime('%H:%M')
+        # Get current server time for TIME IN
+        now = datetime.now()
+        time_in_str = now.strftime('%H:%M')
         
         # Extract location data
         location = data.get('location', {})
         
         # Create main trip with ONLY basic info + TIME IN
+        # ❌ WALANG invoices, checks, odometer dito!
         new_trip = Trip(
             driver_id=driver.id,
             driver_name=driver.full_name,
@@ -121,7 +118,7 @@ def create_trip():
             'success': True,
             'trip_id': new_trip.id,
             'time_in': time_in_str,
-            'message': f'Trip started at {time_in_str} (PHT)'
+            'message': f'Trip started at {time_in_str}'
         })
     except Exception as e:
         print("Error in create_trip:", str(e))
@@ -149,7 +146,7 @@ def update_trip(trip_id):
         
         data = request.get_json()
         
-        # Update allowed fields (but NOT time_in/time_out)
+        # ✅ Update allowed fields (but NOT time_in/time_out)
         trip.helper = data.get('helper', trip.helper)
         trip.dealer = data.get('dealer', trip.dealer)
         trip.odometer = float(data.get('odometer', 0)) if data.get('odometer') else None
@@ -221,9 +218,9 @@ def time_out(trip_id):
         if trip.time_out:
             return jsonify({'success': False, 'message': 'Trip already ended'}), 400
         
-        # ✅ Get current time in Philippines
-        now_ph = datetime.now(PH_TIMEZONE)
-        time_out_str = now_ph.strftime('%H:%M')
+        # Get server time
+        now = datetime.now()
+        time_out_str = now.strftime('%H:%M')
         
         # Update trip
         trip.time_out = time_out_str
@@ -240,7 +237,8 @@ def time_out(trip_id):
             'success': True,
             'message': 'Trip ended successfully',
             'time_out': time_out_str,
-            'duration': f'{hours}h {minutes}m'
+            'duration': f'{hours}h {minutes}m',
+            'server_time': now.isoformat()
         })
     except Exception as e:
         print("Error in time_out:", str(e))
