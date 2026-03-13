@@ -25,18 +25,21 @@ def get_users():
         users_list = []
         
         for user in users:
-            # Kunin ang driver profile para sa full name
+            # ✅ Kunin ang driver profile para sa full details
             driver = Driver.query.filter_by(user_id=user.id).first()
             
             users_list.append({
-                'id': user.id,  # ✅ User ID ito, hindi driver ID
+                'id': user.id,
                 'username': user.username,
                 'full_name': driver.full_name if driver else user.username,
+                'email': driver.email if driver else None,
+                'phone': driver.phone if driver else None,
+                'license_number': driver.license_number if driver else None,
                 'role': user.role,
                 'created_at': user.created_at.strftime('%Y-%m-%d %H:%M') if user.created_at else None
             })
         
-        print(f"Returning {len(users_list)} drivers: {users_list}")
+        print(f"Returning {len(users_list)} drivers with full details")
         return jsonify(users_list)
     except Exception as e:
         print("Error in get_users:", str(e))
