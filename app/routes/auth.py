@@ -6,6 +6,15 @@ from app.models import User, Driver
 
 auth_bp = Blueprint('auth', __name__, url_prefix='/auth')
 
+# ✅ Handle OPTIONS preflight requests
+@auth_bp.route('/login', methods=['OPTIONS'])
+@auth_bp.route('/register', methods=['OPTIONS'])
+@auth_bp.route('/logout', methods=['OPTIONS'])
+@auth_bp.route('/check', methods=['OPTIONS'])
+@auth_bp.route('/drivers', methods=['OPTIONS'])
+def handle_options():
+    return '', 200
+
 @auth_bp.route('/login', methods=['POST'])
 def login():
     try:
@@ -36,6 +45,7 @@ def register():
     try:
         data = request.get_json()
         
+        # Check existing
         if User.query.filter_by(username=data['username']).first():
             return jsonify({'success': False, 'message': 'Username exists'}), 400
         
@@ -45,6 +55,7 @@ def register():
         if Driver.query.filter_by(email=data['email']).first():
             return jsonify({'success': False, 'message': 'Email exists'}), 400
         
+        # Create user
         new_user = User(
             username=data['username'],
             password_hash=generate_password_hash(data['password']),
@@ -53,6 +64,7 @@ def register():
         db.session.add(new_user)
         db.session.flush()
         
+        # Create driver
         new_driver = Driver(
             user_id=new_user.id,
             full_name=data['full_name'],
@@ -69,45 +81,6 @@ def register():
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
-    
-@auth_bp.route('/drivers', methods=['GET'])
-@login_required
-def get_all_drivers():
-    """Get all drivers (for admin use)"""
-    try:
-        # Only admin can view all drivers
-        if current_user.role != 'admin':
-            # If driver, return only their own info
-            driver = Driver.query.filter_by(user_id=current_user.id).first()
-            if driver:
-                return jsonify([{
-                    'id': driver.id,
-                    'full_name': driver.full_name,
-                    'phone': driver.phone,
-                    'license_number': driver.license_number,
-                    'email': driver.email,
-                    'username': current_user.username
-                }])
-            return jsonify([])
-        
-        # Admin view - all drivers
-        drivers = Driver.query.all()
-        drivers_list = []
-        for driver in drivers:
-            drivers_list.append({
-                'id': driver.id,
-                'full_name': driver.full_name,
-                'phone': driver.phone,
-                'license_number': driver.license_number,
-                'email': driver.email,
-                'username': driver.user.username if driver.user else None,
-                'created_at': driver.created_at.strftime('%Y-%m-%d') if driver.created_at else None
-            })
-        
-        return jsonify(drivers_list)
-    except Exception as e:
-        print("Error in get_all_drivers:", str(e))
-        return jsonify({'error': str(e)}), 500
 
 @auth_bp.route('/logout', methods=['POST'])
 @login_required
@@ -124,3 +97,39 @@ def check():
             'username': current_user.username
         })
     return jsonify({'authenticated': False})
+
+@auth_bp.route('/drivers', methods=['GET'])
+@login_required
+def get_all_drivers():
+    try:
+        if current_user.role == 'driver':
+            driver = Driver.query.filter_by(user_id=current_user.id).first()
+            if driver:
+                return jsonify([{
+                    'id': driver.id,
+                    'full_name': driver.full_name,
+                    'phone': driver.phone,
+                    'license_number': driver.license_number,
+                    'email': driver.email,
+                    'username': current_user.username
+                }])
+            return jsonify([])
+        
+        drivers = Driver.query.all()
+        drivers_list = []
+        for driver in drivers:
+            username = driver.user.username if driver.user else None
+            drivers_list.append({
+                'id': driver.id,
+                'full_name': driver.full_name,
+                'phone': driver.phone,
+                'license_number': driver.license_number,
+                'email': driver.email,
+                'username': username,
+                'created_at': driver.created_at.strftime('%Y-%m-%d') if driver.created_at else None
+            })
+        
+        return jsonify(drivers_list)
+    except Exception as e:
+        print("Error in get_all_drivers:", str(e))
+        return jsonify({'error': str(e)}), 500

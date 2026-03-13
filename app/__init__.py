@@ -11,23 +11,45 @@ login_manager = LoginManager()
 def create_app():
     app = Flask(__name__)
     
-    # ✅ CORS Setup
-    CORS(app, supports_credentials=True, origins=[
-        "http://localhost:5173",
-        "https://trip-tracking-backend.onrender.com",
-        "https://trip-tracking-frontend.onrender.com"
-    ])
+    # ✅ DETECT ENVIRONMENT (local or production)
+    is_local = os.environ.get('RENDER') is None  # Kung walang RENDER env, local ito
+    
+    # ✅ CORS Setup - allow both local and production
+    if is_local:
+        # Local development
+        CORS(app, supports_credentials=True, origins=[
+            "http://localhost:5173",
+            "http://localhost:5000",
+            "http://127.0.0.1:5173",
+            "http://127.0.0.1:5000"
+        ])
+    else:
+        # Production (Render)
+        CORS(app, supports_credentials=True, origins=[
+            "https://trip-tracking-backend.onrender.com",
+            "https://trip-tracking-frontend.onrender.com"
+        ])
     
     app.config['SECRET_KEY'] = 'your-secret-key-123'
     
     # ===== SESSION COOKIE CONFIGURATION =====
-   
     app.config['SESSION_COOKIE_HTTPONLY'] = True
-    app.config['SESSION_COOKIE_SAMESITE'] = 'None'  # Para sa cross-site
-    app.config['SESSION_COOKIE_SECURE'] = True       # Para sa HTTPS
-    app.config['SESSION_COOKIE_DOMAIN'] = None       # Auto-detect
-    app.config['SESSION_COOKIE_PATH'] = '/'          # Available sa lahat ng paths
-    app.config['PERMANENT_SESSION_LIFETIME'] = 3600  # 1 hour (optional)
+    
+    # Iba ang settings para sa local at production
+    if is_local:
+        # Local development (HTTP)
+        app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+        app.config['SESSION_COOKIE_SECURE'] = False
+        app.config['REMEMBER_COOKIE_SECURE'] = False
+    else:
+        # Production (HTTPS)
+        app.config['SESSION_COOKIE_SAMESITE'] = 'None'
+        app.config['SESSION_COOKIE_SECURE'] = True
+        app.config['REMEMBER_COOKIE_SECURE'] = True
+    
+    app.config['SESSION_COOKIE_DOMAIN'] = None
+    app.config['SESSION_COOKIE_PATH'] = '/'
+    app.config['PERMANENT_SESSION_LIFETIME'] = 3600  # 1 hour
     
     # ===== MULTIPLE DATABASES CONFIGURATION =====
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///../instance/database.db'
@@ -50,17 +72,17 @@ def create_app():
         from app.models import User
         return User.query.get(int(user_id))
     
-    # ✅ Import routes (NASA LOOB NG FUNCTION)
+    # ✅ Import routes
     from app.routes.auth import auth_bp
     from app.routes.trips import trips_bp
     from app.routes.trips_2025 import trips2025_bp
-    from app.routes.health import health_bp  # ✅ I-add ito
+    from app.routes.health import health_bp
     
-    # ✅ Register blueprints (NASA LOOB NG FUNCTION)
+    # ✅ Register blueprints
     app.register_blueprint(auth_bp)
     app.register_blueprint(trips_bp)
     app.register_blueprint(trips2025_bp)
-    app.register_blueprint(health_bp)  # ✅ I-add ito
+    app.register_blueprint(health_bp)
     
     # Create tables in main database only
     with app.app_context():
@@ -82,6 +104,11 @@ def create_app():
             print("✅ ADMIN CREATED!")
             print("Username: admin")
             print("Password: admin123")
+            print("="*50)
+            if is_local:
+                print("🌍 Environment: LOCAL")
+            else:
+                print("🚀 Environment: PRODUCTION (Render)")
             print("="*50)
     
     return app

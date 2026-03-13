@@ -1,14 +1,98 @@
 from flask import Blueprint, request, jsonify
 from flask_login import login_required, current_user
 from app import db
-from app.models import Trip, Driver, Invoice, Check
+from app.models import User, Trip, Driver, Invoice, Check
+from werkzeug.security import generate_password_hash
 from datetime import datetime
-import pytz  # ✅ Import pytz for timezone handling
+import pytz
 
 # ✅ Set Philippines timezone
 PH_TIMEZONE = pytz.timezone('Asia/Manila')
 
 trips_bp = Blueprint('trips', __name__, url_prefix='/trips')
+
+# ========== GET ALL DRIVERS (FOR ADMIN) ==========
+@trips_bp.route('/users', methods=['GET'])
+@login_required
+def get_users():
+    """Get all drivers only (admin only)"""
+    try:
+        if current_user.role != 'admin':
+            return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+        
+        # ✅ Kunin lahat ng users na role = 'driver'
+        users = User.query.filter_by(role='driver').all()
+        users_list = []
+        
+        for user in users:
+            # Kunin ang driver profile para sa full name
+            driver = Driver.query.filter_by(user_id=user.id).first()
+            
+            users_list.append({
+                'id': user.id,  # ✅ User ID ito, hindi driver ID
+                'username': user.username,
+                'full_name': driver.full_name if driver else user.username,
+                'role': user.role,
+                'created_at': user.created_at.strftime('%Y-%m-%d %H:%M') if user.created_at else None
+            })
+        
+        print(f"Returning {len(users_list)} drivers: {users_list}")
+        return jsonify(users_list)
+    except Exception as e:
+        print("Error in get_users:", str(e))
+        return jsonify({'error': str(e)}), 500
+
+# ========== RESET PASSWORD ==========
+@trips_bp.route('/reset-password', methods=['POST'])
+@login_required
+def reset_password():
+    """Reset password for a driver (admin only)"""
+    try:
+        if current_user.role != 'admin':
+            return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+        
+        data = request.get_json()
+        user_id = data.get('user_id')
+        new_password = data.get('new_password')
+        
+        print(f"🔄 Resetting password for user_id: {user_id}")
+        
+        if not user_id or not new_password:
+            return jsonify({'success': False, 'message': 'User ID and new password are required'}), 400
+        
+        if len(new_password) < 6:
+            return jsonify({'success': False, 'message': 'Password must be at least 6 characters'}), 400
+        
+        # Kunin ang user
+        user = User.query.get(user_id)
+        if not user:
+            print(f"❌ User not found with ID: {user_id}")
+            return jsonify({'success': False, 'message': 'User not found'}), 404
+        
+        # ✅ I-verify na driver ang nirereset-an (hindi admin)
+        if user.role != 'driver':
+            print(f"❌ User {user.username} is {user.role}, not a driver")
+            return jsonify({'success': False, 'message': 'Can only reset passwords for drivers'}), 400
+        
+        # Update password
+        old_hash = user.password_hash  # For logging
+        user.password_hash = generate_password_hash(new_password)
+        db.session.commit()
+        
+        print(f"✅ Password updated for user: {user.username} (ID: {user.id})")
+        print(f"   Old hash: {old_hash[:30]}...")
+        print(f"   New hash: {user.password_hash[:30]}...")
+        
+        return jsonify({
+            'success': True,
+            'message': f'Password for {user.username} has been reset successfully'
+        })
+        
+    except Exception as e:
+        print("❌ Error in reset_password:", str(e))
+        db.session.rollback()
+        return jsonify({'success': False, 'message': str(e)}), 500
+
 
 # ========== GET ALL TRIPS ==========
 @trips_bp.route('', methods=['GET'])
@@ -89,7 +173,7 @@ def create_trip():
         if not driver:
             return jsonify({'success': False, 'message': 'Driver profile not found'}), 404
         
-        # ✅ Get current time in Philippines (Asia/Manila)
+        # Get current time in Philippines (Asia/Manila)
         now_ph = datetime.now(PH_TIMEZONE)
         time_in_str = now_ph.strftime('%H:%M')
         
@@ -221,7 +305,7 @@ def time_out(trip_id):
         if trip.time_out:
             return jsonify({'success': False, 'message': 'Trip already ended'}), 400
         
-        # ✅ Get current time in Philippines
+        # Get current time in Philippines
         now_ph = datetime.now(PH_TIMEZONE)
         time_out_str = now_ph.strftime('%H:%M')
         
