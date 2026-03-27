@@ -14,24 +14,48 @@ def create_app():
     # DETECT ENVIRONMENT (local or production)
     is_local = os.environ.get('RENDER') is None
     
-    # CORS Setup - allow both local and production
+    # CORS Setup
     if is_local:
-        # Local development - allow all origins for testing
         CORS(app, 
              supports_credentials=True, 
-             origins=["http://localhost:5173", "http://localhost:5000", "http://10.80.10.18:5000", "http://10.80.10.11:5000"],
+             origins=[
+                 "http://localhost:5173", 
+                 "http://localhost:5000", 
+                 "http://127.0.0.1:5173", 
+                 "http://127.0.0.1:5000",
+                 "exp://",
+                 "http://localhost:19000",
+                 "http://localhost:19006",
+                 "*"  # For mobile testing
+             ],
              methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-             allow_headers=["Content-Type", "Authorization", "X-Requested-With", "Accept"])
+             allow_headers=["Content-Type", "Authorization", "X-Requested-With", "Accept"],
+             expose_headers=["Content-Type", "Authorization"])
     else:
-        # Production (Render)
-        CORS(app, supports_credentials=True, origins=[
-            "https://trip-tracking-backend.onrender.com",
-            "https://trip-tracking-frontend.onrender.com"
-        ])
+        # Production (Render) - allow mobile apps
+        CORS(app, 
+             supports_credentials=True, 
+             origins=[
+                 "https://trip-tracking-backend.onrender.com",
+                 "https://trip-tracking-frontend.onrender.com",
+                "https://trip-tracking-backend.onrender.com",
+                 "https://trip-tracking-frontend.onrender.com",  # <-- ito ang web frontend mo
+              "https://trip-tracking-frontend.onrender.com",  # web frontend
+              "exp://",
+             "http://localhost:19000",
+             "http://localhost:19006",
+             "https://expo.io",
+             "https://*.expo.io",
+             "*"
+
+             ],
+             methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+             allow_headers=["Content-Type", "Authorization", "X-Requested-With", "Accept"],
+             expose_headers=["Content-Type", "Authorization"])
     
-    app.config['SECRET_KEY'] = 'your-secret-key-123'
+    app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key-123')
     
-    # Session cookie configuration
+    # Session configuration
     app.config['SESSION_COOKIE_HTTPONLY'] = True
     
     if is_local:
@@ -47,16 +71,33 @@ def create_app():
     app.config['SESSION_COOKIE_PATH'] = '/'
     app.config['PERMANENT_SESSION_LIFETIME'] = 3600
     
-    # Database configuration
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///../instance/database.db'
-    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    HISTORICAL_DB_PATH = os.path.join(BASE_DIR, 'data_2025', 'trips_2025.db')
-
+    # DATABASE CONFIGURATION - SQLITE ONLY
+    # Get the absolute path for the database
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    INSTANCE_PATH = os.path.join(BASE_DIR, 'instance')
+    
+    # Create instance folder if it doesn't exist
+    if not os.path.exists(INSTANCE_PATH):
+        os.makedirs(INSTANCE_PATH)
+    
+    # SQLite database path
+    DB_PATH = os.path.join(INSTANCE_PATH, 'database.db')
+    app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{DB_PATH}'
+    
+    # Historical database
+    HISTORICAL_DB_PATH = os.path.join(BASE_DIR, '..', 'data_2025', 'trips_2025.db')
     app.config['SQLALCHEMY_BINDS'] = {
-        'main': 'sqlite:///../instance/database.db',
+        'main': f'sqlite:///{DB_PATH}',
         'historical': f'sqlite:///{HISTORICAL_DB_PATH}'
     }
+    
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+        'pool_pre_ping': True,
+    }
+    
+    print(f"✅ Database path: {DB_PATH}")
+    print(f"✅ Historical DB path: {HISTORICAL_DB_PATH}")
     
     db.init_app(app)
     login_manager.init_app(app)
