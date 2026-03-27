@@ -39,8 +39,15 @@ class Trip(db.Model):
     date = db.Column(db.String(20), nullable=False)
     helper = db.Column(db.String(100))
     dealer = db.Column(db.String(200), nullable=False)
-    time_in = db.Column(db.String(10))  # Pwedeng NULL pag hindi pa nag-TIME IN
-    time_out = db.Column(db.String(10), nullable=True)  # ✅ PWEDENG NULL!
+    
+    # NEW TIME TRACKING FIELDS
+    time_departure = db.Column(db.String(10))  # ORAS NG ALIS (start trip)
+    time_arrival = db.Column(db.String(10))    # ORAS NG DATING / START UNLOAD (formerly time_in)
+    time_unload_end = db.Column(db.String(10)) # ORAS NG TAPOS MAG-UNLOAD (formerly time_out)
+    
+    # Flag to indicate if trip is completed (can't edit time fields)
+    is_completed = db.Column(db.Boolean, default=False)
+    
     odometer = db.Column(db.Float)
     invoice_no = db.Column(db.String(100))
     amount = db.Column(db.Float, default=0)
@@ -104,8 +111,10 @@ class Trip2025(db.Model):
     date = db.Column(db.String(20), nullable=False)
     helper = db.Column(db.String(100))
     dealer = db.Column(db.String(200), nullable=False)
-    time_in = db.Column(db.String(10))
-    time_out = db.Column(db.String(10))
+    time_departure = db.Column(db.String(10))
+    time_arrival = db.Column(db.String(10))
+    time_unload_end = db.Column(db.String(10))
+    is_completed = db.Column(db.Boolean, default=False)
     odometer = db.Column(db.Float)
     invoice_no = db.Column(db.String(100))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
