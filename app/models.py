@@ -40,15 +40,22 @@ class Trip(db.Model):
     helper = db.Column(db.String(100))
     dealer = db.Column(db.String(200), nullable=False)
     
-    # NEW TIME TRACKING FIELDS
-    time_departure = db.Column(db.String(10))  # ORAS NG ALIS (start trip)
-    time_arrival = db.Column(db.String(10))    # ORAS NG DATING / START UNLOAD (formerly time_in)
-    time_unload_end = db.Column(db.String(10)) # ORAS NG TAPOS MAG-UNLOAD (formerly time_out)
+    # Time tracking fields
+    time_departure = db.Column(db.String(10))
+    time_arrival = db.Column(db.String(10))
+    time_unload_end = db.Column(db.String(10))
     
-    # Flag to indicate if trip is completed (can't edit time fields)
+    # NEW: Odometer fields
+    departure_odometer = db.Column(db.Float)  # Odo bago umalis
+    arrival_odometer = db.Column(db.Float)    # Odo pagdating
+    # computed: distance = arrival_odometer - departure_odometer
+    
+    # Flag
     is_completed = db.Column(db.Boolean, default=False)
     
+    # Old odometer field (for backward compatibility)
     odometer = db.Column(db.Float)
+    
     invoice_no = db.Column(db.String(100))
     amount = db.Column(db.Float, default=0)
     
@@ -58,12 +65,22 @@ class Trip(db.Model):
     location_accuracy = db.Column(db.Float)
     location_timestamp = db.Column(db.String(30))
     
+    arrival_location_lat = db.Column(db.Float)
+    arrival_location_lng = db.Column(db.Float)
+    arrival_location_accuracy = db.Column(db.Float)
+    arrival_location_timestamp = db.Column(db.String(30))
+    
+    end_location_lat = db.Column(db.Float)
+    end_location_lng = db.Column(db.Float)
+    end_location_accuracy = db.Column(db.Float)
+    end_location_timestamp = db.Column(db.String(30))
+    
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
     # Relationships
     invoices = db.relationship('Invoice', backref='trip', lazy=True, cascade='all, delete-orphan')
     checks = db.relationship('Check', backref='trip', lazy=True, cascade='all, delete-orphan')
-
+    
 class Invoice(db.Model):
     __tablename__ = 'invoices'
     __bind_key__ = 'main'

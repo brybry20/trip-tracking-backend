@@ -67,7 +67,7 @@ def reset_password():
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
 
-# ========== GET ALL TRIPS ==========
+# ========== GET ALL TRIPS (with totals and distance) ==========
 @trips_bp.route('', methods=['GET'])
 @login_required
 def get_trips():
@@ -83,12 +83,23 @@ def get_trips():
         trips_list = []
         for trip in trips:
             invoices = []
+            total_invoices = 0
             for inv in trip.invoices:
                 invoices.append({'id': inv.id, 'invoice_no': inv.invoice_no, 'amount': inv.amount})
+                total_invoices += inv.amount
             
             checks = []
+            total_checks = 0
             for chk in trip.checks:
                 checks.append({'id': chk.id, 'check_no': chk.check_no, 'amount': chk.amount})
+                total_checks += chk.amount
+            
+            # Compute distance traveled
+            distance = None
+            if trip.departure_odometer and trip.arrival_odometer:
+                distance = trip.arrival_odometer - trip.departure_odometer
+                if distance < 0:
+                    distance = 0
             
             trips_list.append({
                 'id': trip.id,
@@ -101,7 +112,12 @@ def get_trips():
                 'time_arrival': trip.time_arrival,
                 'time_unload_end': trip.time_unload_end,
                 'is_completed': trip.is_completed,
+                'departure_odometer': trip.departure_odometer,
+                'arrival_odometer': trip.arrival_odometer,
+                'distance': distance,
                 'odometer': trip.odometer,
+                'total_invoices': total_invoices,
+                'total_checks': total_checks,
                 'invoices': invoices,
                 'checks': checks,
                 'location_lat': trip.location_lat,
@@ -111,7 +127,7 @@ def get_trips():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-# ========== START TRIP ==========
+# ========== START TRIP (with departure odometer) ==========
 @trips_bp.route('', methods=['POST', 'OPTIONS'])
 @login_required
 def create_trip():
@@ -132,6 +148,14 @@ def create_trip():
         
         location = data.get('location', {})
         
+        # Get departure odometer from request
+        departure_odometer = data.get('departure_odometer')
+        if departure_odometer:
+            try:
+                departure_odometer = float(departure_odometer)
+            except:
+                departure_odometer = None
+        
         new_trip = Trip(
             driver_id=driver.id,
             driver_name=driver.full_name,
@@ -142,7 +166,9 @@ def create_trip():
             time_arrival=None,
             time_unload_end=None,
             is_completed=False,
-            odometer=None,
+            departure_odometer=departure_odometer,
+            arrival_odometer=None,
+            odometer=departure_odometer,  # For backward compatibility
             location_lat=location.get('latitude'),
             location_lng=location.get('longitude'),
         )
@@ -154,6 +180,7 @@ def create_trip():
             'success': True,
             'trip_id': new_trip.id,
             'time_departure': time_departure_str,
+            'departure_odometer': departure_odometer
         })
     except Exception as e:
         print("Error:", str(e))
@@ -225,15 +252,23 @@ def end_trip(trip_id):
         trip.is_completed = True
         db.session.commit()
         
+        # Calculate distance if both odometers are present
+        distance = None
+        if trip.departure_odometer and trip.arrival_odometer:
+            distance = trip.arrival_odometer - trip.departure_odometer
+            if distance < 0:
+                distance = 0
+        
         return jsonify({
             'success': True,
             'time_unload_end': time_unload_end_str,
-            'total_duration': 'Trip completed'
+            'total_duration': 'Trip completed',
+            'distance': distance
         })
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
 
-# ========== UPDATE TRIP ==========
+# ========== UPDATE TRIP (with arrival odometer and totals) ==========
 @trips_bp.route('/<int:trip_id>', methods=['PUT', 'OPTIONS'])
 @login_required
 def update_trip(trip_id):
@@ -256,7 +291,27 @@ def update_trip(trip_id):
             trip.helper = data['helper']
         if 'dealer' in data:
             trip.dealer = data['dealer']
-        if 'odometer' in data:
+        
+        # Handle arrival odometer
+        if 'arrival_odometer' in data:
+            try:
+                arrival_odometer = float(data['arrival_odometer']) if data['arrival_odometer'] else None
+                trip.arrival_odometer = arrival_odometer
+                # Update odometer for backward compatibility
+                if arrival_odometer:
+                    trip.odometer = arrival_odometer
+            except:
+                pass
+        
+        # Handle departure odometer (for edits)
+        if 'departure_odometer' in data:
+            try:
+                trip.departure_odometer = float(data['departure_odometer']) if data['departure_odometer'] else None
+            except:
+                pass
+        
+        # Handle old odometer field (backward compatibility)
+        if 'odometer' in data and 'arrival_odometer' not in data:
             try:
                 trip.odometer = float(data['odometer']) if data['odometer'] else None
             except:
@@ -286,7 +341,26 @@ def update_trip(trip_id):
         
         db.session.commit()
         
-        return jsonify({'success': True, 'message': 'Trip updated'})
+        # Compute totals for response
+        total_invoices = sum(inv.amount for inv in trip.invoices)
+        total_checks = sum(chk.amount for chk in trip.checks)
+        
+        # Compute distance
+        distance = None
+        if trip.departure_odometer and trip.arrival_odometer:
+            distance = trip.arrival_odometer - trip.departure_odometer
+            if distance < 0:
+                distance = 0
+        
+        return jsonify({
+            'success': True, 
+            'message': 'Trip updated',
+            'total_invoices': total_invoices,
+            'total_checks': total_checks,
+            'distance': distance,
+            'departure_odometer': trip.departure_odometer,
+            'arrival_odometer': trip.arrival_odometer
+        })
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
 
@@ -313,3 +387,61 @@ def delete_trip(trip_id):
         return jsonify({'success': True, 'message': 'Trip deleted'})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
+
+# ========== GET SINGLE TRIP (with details) ==========
+@trips_bp.route('/<int:trip_id>', methods=['GET'])
+@login_required
+def get_trip(trip_id):
+    try:
+        trip = Trip.query.get(trip_id)
+        if not trip:
+            return jsonify({'error': 'Trip not found'}), 404
+        
+        if current_user.role != 'admin':
+            driver = Driver.query.filter_by(user_id=current_user.id).first()
+            if not driver or trip.driver_id != driver.id:
+                return jsonify({'error': 'Unauthorized'}), 403
+        
+        invoices = []
+        total_invoices = 0
+        for inv in trip.invoices:
+            invoices.append({'id': inv.id, 'invoice_no': inv.invoice_no, 'amount': inv.amount})
+            total_invoices += inv.amount
+        
+        checks = []
+        total_checks = 0
+        for chk in trip.checks:
+            checks.append({'id': chk.id, 'check_no': chk.check_no, 'amount': chk.amount})
+            total_checks += chk.amount
+        
+        # Compute distance
+        distance = None
+        if trip.departure_odometer and trip.arrival_odometer:
+            distance = trip.arrival_odometer - trip.departure_odometer
+            if distance < 0:
+                distance = 0
+        
+        return jsonify({
+            'id': trip.id,
+            'driver_id': trip.driver_id,
+            'driver_name': trip.driver_name,
+            'date': trip.date,
+            'helper': trip.helper,
+            'dealer': trip.dealer,
+            'time_departure': trip.time_departure,
+            'time_arrival': trip.time_arrival,
+            'time_unload_end': trip.time_unload_end,
+            'is_completed': trip.is_completed,
+            'departure_odometer': trip.departure_odometer,
+            'arrival_odometer': trip.arrival_odometer,
+            'distance': distance,
+            'odometer': trip.odometer,
+            'total_invoices': total_invoices,
+            'total_checks': total_checks,
+            'invoices': invoices,
+            'checks': checks,
+            'location_lat': trip.location_lat,
+            'location_lng': trip.location_lng,
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
