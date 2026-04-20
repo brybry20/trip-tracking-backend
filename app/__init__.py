@@ -10,8 +10,10 @@ login_manager = LoginManager()
 
 def create_app():
     app = Flask(__name__)
-        # JWT Secret Key
+    
+    # JWT Secret Key
     app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'your-super-secret-jwt-key-change-this')
+    
     # DETECT ENVIRONMENT (local or production)
     is_local = os.environ.get('RENDER') is None
     
@@ -27,28 +29,24 @@ def create_app():
                  "exp://",
                  "http://localhost:19000",
                  "http://localhost:19006",
-                 "*"  # For mobile testing
+                 "*"
              ],
              methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
              allow_headers=["Content-Type", "Authorization", "X-Requested-With", "Accept"],
              expose_headers=["Content-Type", "Authorization"])
     else:
-        # Production (Render) - allow mobile apps
+        # Production (Render)
         CORS(app, 
              supports_credentials=True, 
              origins=[
                  "https://trip-tracking-backend.onrender.com",
                  "https://trip-tracking-frontend.onrender.com",
-                "https://trip-tracking-backend.onrender.com",
-                 "https://trip-tracking-frontend.onrender.com",  # <-- ito ang web frontend mo
-              "https://trip-tracking-frontend.onrender.com",  # web frontend
-              "exp://",
-             "http://localhost:19000",
-             "http://localhost:19006",
-             "https://expo.io",
-             "https://*.expo.io",
-             "*"
-
+                 "exp://",
+                 "http://localhost:19000",
+                 "http://localhost:19006",
+                 "https://expo.io",
+                 "https://*.expo.io",
+                 "*"
              ],
              methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
              allow_headers=["Content-Type", "Authorization", "X-Requested-With", "Accept"],
@@ -73,19 +71,15 @@ def create_app():
     app.config['PERMANENT_SESSION_LIFETIME'] = 3600
     
     # DATABASE CONFIGURATION - SQLITE ONLY
-    # Get the absolute path for the database
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
     INSTANCE_PATH = os.path.join(BASE_DIR, 'instance')
     
-    # Create instance folder if it doesn't exist
     if not os.path.exists(INSTANCE_PATH):
         os.makedirs(INSTANCE_PATH)
     
-    # SQLite database path
     DB_PATH = os.path.join(INSTANCE_PATH, 'database.db')
     app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{DB_PATH}'
     
-    # Historical database
     HISTORICAL_DB_PATH = os.path.join(BASE_DIR, '..', 'data_2025', 'trips_2025.db')
     app.config['SQLALCHEMY_BINDS'] = {
         'main': f'sqlite:///{DB_PATH}',
@@ -121,9 +115,33 @@ def create_app():
     app.register_blueprint(trips2025_bp)
     app.register_blueprint(health_bp)
     
-    # Create tables
+    # MIGRATION FUNCTION - FIXED INDENTATION
+    def migrate_database():
+        """Auto-migrate database when needed"""
+        try:
+            inspector = db.inspect(db.engine)
+            columns = [col['name'] for col in inspector.get_columns('users')]
+            
+            if 'current_token' not in columns:
+                db.session.execute(db.text('ALTER TABLE users ADD COLUMN current_token VARCHAR(500)'))
+                print("✅ Added current_token column")
+            
+            if 'token_created_at' not in columns:
+                db.session.execute(db.text('ALTER TABLE users ADD COLUMN token_created_at DATETIME'))
+                print("✅ Added token_created_at column")
+            
+            if 'last_active' not in columns:
+                db.session.execute(db.text('ALTER TABLE users ADD COLUMN last_active DATETIME'))
+                print("✅ Added last_active column")
+            
+            db.session.commit()
+        except Exception as e:
+            print(f"Migration warning: {e}")
+    
+    # CREATE TABLES AND RUN MIGRATION
     with app.app_context():
         db.create_all()
+        migrate_database()  # Run migration after creating tables
         
         from app.models import User
         
