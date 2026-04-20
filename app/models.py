@@ -13,6 +13,11 @@ class User(UserMixin, db.Model):
     role = db.Column(db.String(20), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
+    # NEW: Token management fields
+    current_token = db.Column(db.String(500), nullable=True)
+    token_created_at = db.Column(db.DateTime, nullable=True)
+    last_active = db.Column(db.DateTime, default=datetime.utcnow)
+    
     driver = db.relationship('Driver', backref='user', uselist=False, cascade='all, delete-orphan')
 
 class Driver(db.Model):
@@ -80,7 +85,7 @@ class Trip(db.Model):
     # Relationships
     invoices = db.relationship('Invoice', backref='trip', lazy=True, cascade='all, delete-orphan')
     checks = db.relationship('Check', backref='trip', lazy=True, cascade='all, delete-orphan')
-    
+
 class Invoice(db.Model):
     __tablename__ = 'invoices'
     __bind_key__ = 'main'

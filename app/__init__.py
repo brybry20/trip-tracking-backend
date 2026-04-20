@@ -10,7 +10,8 @@ login_manager = LoginManager()
 
 def create_app():
     app = Flask(__name__)
-    
+        # JWT Secret Key
+    app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'your-super-secret-jwt-key-change-this')
     # DETECT ENVIRONMENT (local or production)
     is_local = os.environ.get('RENDER') is None
     
