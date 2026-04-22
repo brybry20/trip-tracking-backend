@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from functools import wraps
 from flask import request, jsonify, current_app
 from flask_login import current_user, login_user
-from app.models import User, db
+from app.models import User
 
 # Secret key for JWT (store in environment variable in production)
 SECRET_KEY = os.environ.get('JWT_SECRET_KEY', 'your-super-secret-jwt-key-change-this')
@@ -50,21 +50,21 @@ def token_required(f):
             return jsonify({'success': False, 'message': 'Token is invalid or expired!'}), 401
         
         # Check if token matches the user's current token
-        user = User.query.get(payload['user_id'])
+        user = User.objects(id=payload['user_id']).first()
         if not user or user.current_token != token:
             return jsonify({'success': False, 'message': 'Session expired. Please login again.'}), 401
         
         # Update last active time
         user.last_active = datetime.utcnow()
-        db.session.commit()
+        user.save()
         
         return f(*args, **kwargs)
     return decorated
 
 def logout_user_from_all_devices(user_id):
     """Logout user from all devices by invalidating all tokens"""
-    user = User.query.get(user_id)
+    user = User.objects(id=user_id).first()
     if user:
         user.current_token = None
         user.token_created_at = None
-        db.session.commit()
+        user.save()

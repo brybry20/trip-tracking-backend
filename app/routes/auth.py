@@ -1,7 +1,6 @@
 from flask import Blueprint, request, jsonify
 from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
-from app import db
 from app.models import User, Driver
 from app.utils.auth import generate_token, verify_token, token_required, logout_user_from_all_devices
 from datetime import datetime
@@ -26,7 +25,7 @@ def login():
         password = data.get('password')
         device_id = data.get('device_id', 'web')  # For mobile, send unique device ID
         
-        user = User.query.filter_by(username=username).first()
+        user = User.objects(username=username).first()
         
         if user and check_password_hash(user.password_hash, password):
             # Check if user is already logged in on another device/browser
@@ -36,13 +35,13 @@ def login():
                 pass
             
             # Generate new token
-            token = generate_token(user.id, user.username, user.role)
+            token = generate_token(str(user.id), user.username, user.role)
             
             # Save token to user record
             user.current_token = token
             user.token_created_at = datetime.utcnow()
             user.last_active = datetime.utcnow()
-            db.session.commit()
+            user.save()
             
             # Also use Flask-Login for session management
             login_user(user)
@@ -78,7 +77,7 @@ def verify_token_route():
             return jsonify({'valid': False, 'message': 'Token expired'}), 401
         
         # Check if token matches database
-        user = User.query.get(payload['user_id'])
+        user = User.objects(id=payload['user_id']).first()
         if not user or user.current_token != token:
             return jsonify({'valid': False, 'message': 'Session invalid'}), 401
         
@@ -93,7 +92,7 @@ def logout():
         # Invalidate token
         current_user.current_token = None
         current_user.token_created_at = None
-        db.session.commit()
+        current_user.save()
         
         logout_user()
         return jsonify({'success': True, 'message': 'Logged out'})
@@ -122,13 +121,13 @@ def register():
         data = request.get_json()
         
         # Check existing
-        if User.query.filter_by(username=data['username']).first():
+        if User.objects(username=data['username']).first():
             return jsonify({'success': False, 'message': 'Username exists'}), 400
         
-        if Driver.query.filter_by(license_number=data['license_number']).first():
+        if Driver.objects(license_number=data['license_number']).first():
             return jsonify({'success': False, 'message': 'License exists'}), 400
         
-        if Driver.query.filter_by(email=data['email']).first():
+        if Driver.objects(email=data['email']).first():
             return jsonify({'success': False, 'message': 'Email exists'}), 400
         
         # Create user
@@ -137,26 +136,23 @@ def register():
             password_hash=generate_password_hash(data['password']),
             role='driver'
         )
-        db.session.add(new_user)
-        db.session.flush()
+        new_user.save()
         
         # Create driver
         new_driver = Driver(
-            user_id=new_user.id,
+            user=new_user,
             full_name=data['full_name'],
             phone=data['phone'],
             license_number=data['license_number'],
             email=data['email']
         )
-        db.session.add(new_driver)
-        db.session.commit()
+        new_driver.save()
         
         return jsonify({
             'success': True,
             'message': 'Registration successful!'
         })
     except Exception as e:
-        db.session.rollback()
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @auth_bp.route('/check', methods=['GET'])
@@ -174,10 +170,10 @@ def check():
 def get_all_drivers():
     try:
         if current_user.role == 'driver':
-            driver = Driver.query.filter_by(user_id=current_user.id).first()
+            driver = Driver.objects(user=current_user.id).first()
             if driver:
                 return jsonify([{
-                    'id': driver.id,
+                    'id': str(driver.id),
                     'full_name': driver.full_name,
                     'phone': driver.phone,
                     'license_number': driver.license_number,
@@ -186,12 +182,12 @@ def get_all_drivers():
                 }])
             return jsonify([])
         
-        drivers = Driver.query.all()
+        drivers = Driver.objects.all()
         drivers_list = []
         for driver in drivers:
             username = driver.user.username if driver.user else None
             drivers_list.append({
-                'id': driver.id,
+                'id': str(driver.id),
                 'full_name': driver.full_name,
                 'phone': driver.phone,
                 'license_number': driver.license_number,
@@ -203,4 +199,4 @@ def get_all_drivers():
         return jsonify(drivers_list)
     except Exception as e:
         print("Error in get_all_drivers:", str(e))
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': str(e)}), 500

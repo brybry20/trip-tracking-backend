@@ -1,18 +1,26 @@
 import os
 from flask import Flask
-from flask_sqlalchemy import SQLAlchemy
+import mongoengine as me
 from flask_login import LoginManager
 from flask_cors import CORS
 from werkzeug.security import generate_password_hash
+from dotenv import load_dotenv
 
-db = SQLAlchemy()
+# Load environment variables
+load_dotenv()
+
 login_manager = LoginManager()
 
 def create_app():
     app = Flask(__name__)
     
-    # JWT Secret Key
+    # Configuration
+    app.config['MONGO_URI'] = os.environ.get('MONGO_URI')
+    app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key-123')
     app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'your-super-secret-jwt-key-change-this')
+    
+    # Connect to MongoDB
+    me.connect(host=app.config['MONGO_URI'])
     
     # DETECT ENVIRONMENT (local or production)
     is_local = os.environ.get('RENDER') is None
@@ -52,8 +60,6 @@ def create_app():
              allow_headers=["Content-Type", "Authorization", "X-Requested-With", "Accept"],
              expose_headers=["Content-Type", "Authorization"])
     
-    app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key-123')
-    
     # Session configuration
     app.config['SESSION_COOKIE_HTTPONLY'] = True
     
@@ -70,38 +76,16 @@ def create_app():
     app.config['SESSION_COOKIE_PATH'] = '/'
     app.config['PERMANENT_SESSION_LIFETIME'] = 3600
     
-    # DATABASE CONFIGURATION - SQLITE ONLY
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-    INSTANCE_PATH = os.path.join(BASE_DIR, 'instance')
-    
-    if not os.path.exists(INSTANCE_PATH):
-        os.makedirs(INSTANCE_PATH)
-    
-    DB_PATH = os.path.join(INSTANCE_PATH, 'database.db')
-    app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{DB_PATH}'
-    
-    HISTORICAL_DB_PATH = os.path.join(BASE_DIR, '..', 'data_2025', 'trips_2025.db')
-    app.config['SQLALCHEMY_BINDS'] = {
-        'main': f'sqlite:///{DB_PATH}',
-        'historical': f'sqlite:///{HISTORICAL_DB_PATH}'
-    }
-    
-    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-        'pool_pre_ping': True,
-    }
-    
-    print(f"✅ Database path: {DB_PATH}")
-    print(f"✅ Historical DB path: {HISTORICAL_DB_PATH}")
-    
-    db.init_app(app)
     login_manager.init_app(app)
     login_manager.login_view = 'auth.login'
     
     @login_manager.user_loader
     def load_user(user_id):
         from app.models import User
-        return User.query.get(int(user_id))
+        try:
+            return User.objects(id=user_id).first()
+        except:
+            return None
     
     # Import routes
     from app.routes.auth import auth_bp
@@ -115,49 +99,26 @@ def create_app():
     app.register_blueprint(trips2025_bp)
     app.register_blueprint(health_bp)
     
-    # MIGRATION FUNCTION - FIXED INDENTATION
-    def migrate_database():
-        """Auto-migrate database when needed"""
-        try:
-            inspector = db.inspect(db.engine)
-            columns = [col['name'] for col in inspector.get_columns('users')]
-            
-            if 'current_token' not in columns:
-                db.session.execute(db.text('ALTER TABLE users ADD COLUMN current_token VARCHAR(500)'))
-                print("✅ Added current_token column")
-            
-            if 'token_created_at' not in columns:
-                db.session.execute(db.text('ALTER TABLE users ADD COLUMN token_created_at DATETIME'))
-                print("✅ Added token_created_at column")
-            
-            if 'last_active' not in columns:
-                db.session.execute(db.text('ALTER TABLE users ADD COLUMN last_active DATETIME'))
-                print("✅ Added last_active column")
-            
-            db.session.commit()
-        except Exception as e:
-            print(f"Migration warning: {e}")
-    
-    # CREATE TABLES AND RUN MIGRATION
+    # CREATE ADMIN USER IF NOT EXISTS
     with app.app_context():
-        db.create_all()
-        migrate_database()  # Run migration after creating tables
-        
         from app.models import User
         
-        admin = User.query.filter_by(username='admin').first()
-        if not admin:
-            admin = User(
-                username='admin',
-                password_hash=generate_password_hash('admin123'),
-                role='admin'
-            )
-            db.session.add(admin)
-            db.session.commit()
-            print("="*50)
-            print("✅ ADMIN CREATED!")
-            print("Username: admin")
-            print("Password: admin123")
-            print("="*50)
+        try:
+            admin = User.objects(username='admin').first()
+            if not admin:
+                admin = User(
+                    username='admin',
+                    password_hash=generate_password_hash('admin123'),
+                    role='admin'
+                )
+                admin.save()
+                print("="*50)
+                print("✅ ADMIN CREATED IN MONGODB!")
+                print("Username: admin")
+                print("Password: admin123")
+                print("="*50)
+        except Exception as e:
+            print(f"Error checking/creating admin: {e}")
     
     return app
+

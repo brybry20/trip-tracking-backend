@@ -1,6 +1,5 @@
 from flask import Blueprint, request, jsonify
 from flask_login import login_required, current_user
-from app import db
 from app.models import User, Trip, Driver, Invoice, Check
 from werkzeug.security import generate_password_hash
 from datetime import datetime, timezone, timedelta
@@ -18,12 +17,12 @@ def get_users():
         if current_user.role != 'admin':
             return jsonify({'success': False, 'message': 'Unauthorized'}), 403
         
-        users = User.query.filter_by(role='driver').all()
+        users = User.objects(role='driver').all()
         users_list = []
         for user in users:
-            driver = Driver.query.filter_by(user_id=user.id).first()
+            driver = Driver.objects(user=user).first()
             users_list.append({
-                'id': user.id,
+                'id': str(user.id),
                 'username': user.username,
                 'full_name': driver.full_name if driver else user.username,
                 'email': driver.email if driver else None,
@@ -53,7 +52,7 @@ def reset_password():
         if len(new_password) < 6:
             return jsonify({'success': False, 'message': 'Password must be at least 6 characters'}), 400
         
-        user = User.query.get(user_id)
+        user = User.objects(id=user_id).first()
         if not user:
             return jsonify({'success': False, 'message': 'User not found'}), 404
         
@@ -61,7 +60,7 @@ def reset_password():
             return jsonify({'success': False, 'message': 'Can only reset passwords for drivers'}), 400
         
         user.password_hash = generate_password_hash(new_password)
-        db.session.commit()
+        user.save()
         
         return jsonify({'success': True, 'message': f'Password for {user.username} has been reset'})
     except Exception as e:
@@ -73,25 +72,25 @@ def reset_password():
 def get_trips():
     try:
         if current_user.role == 'admin':
-            trips = Trip.query.all()
+            trips = Trip.objects.all()
         else:
-            driver = Driver.query.filter_by(user_id=current_user.id).first()
+            driver = Driver.objects(user=current_user.id).first()
             if not driver:
                 return jsonify([])
-            trips = Trip.query.filter_by(driver_id=driver.id).all()
+            trips = Trip.objects(driver=driver).all()
         
         trips_list = []
         for trip in trips:
             invoices = []
             total_invoices = 0
             for inv in trip.invoices:
-                invoices.append({'id': inv.id, 'invoice_no': inv.invoice_no, 'amount': inv.amount})
+                invoices.append({'invoice_no': inv.invoice_no, 'amount': inv.amount})
                 total_invoices += inv.amount
             
             checks = []
             total_checks = 0
             for chk in trip.checks:
-                checks.append({'id': chk.id, 'check_no': chk.check_no, 'amount': chk.amount})
+                checks.append({'check_no': chk.check_no, 'amount': chk.amount})
                 total_checks += chk.amount
             
             # Compute distance traveled
@@ -102,8 +101,8 @@ def get_trips():
                     distance = 0
             
             trips_list.append({
-                'id': trip.id,
-                'driver_id': trip.driver_id,
+                'id': str(trip.id),
+                'driver_id': str(trip.driver.id) if trip.driver else None,
                 'driver_name': trip.driver_name,
                 'date': trip.date,
                 'helper': trip.helper,
@@ -139,7 +138,7 @@ def create_trip():
             return jsonify({'success': False, 'message': 'Only drivers can create trips'}), 403
         
         data = request.get_json()
-        driver = Driver.query.filter_by(user_id=current_user.id).first()
+        driver = Driver.objects(user=current_user.id).first()
         if not driver:
             return jsonify({'success': False, 'message': 'Driver profile not found'}), 404
         
@@ -157,28 +156,24 @@ def create_trip():
                 departure_odometer = None
         
         new_trip = Trip(
-            driver_id=driver.id,
+            driver=driver,
             driver_name=driver.full_name,
             date=data['date'],
             helper=data.get('helper', ''),
             dealer=data.get('dealer', ''),
             time_departure=time_departure_str,
-            time_arrival=None,
-            time_unload_end=None,
             is_completed=False,
             departure_odometer=departure_odometer,
-            arrival_odometer=None,
             odometer=departure_odometer,  # For backward compatibility
             location_lat=location.get('latitude'),
             location_lng=location.get('longitude'),
         )
         
-        db.session.add(new_trip)
-        db.session.commit()
+        new_trip.save()
         
         return jsonify({
             'success': True,
-            'trip_id': new_trip.id,
+            'trip_id': str(new_trip.id),
             'time_departure': time_departure_str,
             'departure_odometer': departure_odometer
         })
@@ -187,20 +182,20 @@ def create_trip():
         return jsonify({'success': False, 'message': str(e)}), 500
 
 # ========== ARRIVE ==========
-@trips_bp.route('/<int:trip_id>/arrive', methods=['POST', 'OPTIONS'])
+@trips_bp.route('/<string:trip_id>/arrive', methods=['POST', 'OPTIONS'])
 @login_required
 def record_arrival(trip_id):
     if request.method == 'OPTIONS':
         return '', 200
         
     try:
-        trip = Trip.query.get(trip_id)
+        trip = Trip.objects(id=trip_id).first()
         if not trip:
             return jsonify({'success': False, 'message': 'Trip not found'}), 404
         
-        driver = Driver.query.filter_by(user_id=current_user.id).first()
+        driver = Driver.objects(user=current_user.id).first()
         if current_user.role != 'admin':
-            if not driver or trip.driver_id != driver.id:
+            if not driver or trip.driver.id != driver.id:
                 return jsonify({'success': False, 'message': 'Unauthorized'}), 403
         
         if not trip.time_departure:
@@ -213,7 +208,7 @@ def record_arrival(trip_id):
         time_arrival_str = now_ph.strftime('%H:%M')
         
         trip.time_arrival = time_arrival_str
-        db.session.commit()
+        trip.save()
         
         return jsonify({
             'success': True,
@@ -223,20 +218,20 @@ def record_arrival(trip_id):
         return jsonify({'success': False, 'message': str(e)}), 500
 
 # ========== END TRIP ==========
-@trips_bp.route('/<int:trip_id>/end-trip', methods=['POST', 'OPTIONS'])
+@trips_bp.route('/<string:trip_id>/end-trip', methods=['POST', 'OPTIONS'])
 @login_required
 def end_trip(trip_id):
     if request.method == 'OPTIONS':
         return '', 200
         
     try:
-        trip = Trip.query.get(trip_id)
+        trip = Trip.objects(id=trip_id).first()
         if not trip:
             return jsonify({'success': False, 'message': 'Trip not found'}), 404
         
-        driver = Driver.query.filter_by(user_id=current_user.id).first()
+        driver = Driver.objects(user=current_user.id).first()
         if current_user.role != 'admin':
-            if not driver or trip.driver_id != driver.id:
+            if not driver or trip.driver.id != driver.id:
                 return jsonify({'success': False, 'message': 'Unauthorized'}), 403
         
         if not trip.time_departure:
@@ -250,7 +245,7 @@ def end_trip(trip_id):
         
         trip.time_unload_end = time_unload_end_str
         trip.is_completed = True
-        db.session.commit()
+        trip.save()
         
         # Calculate distance if both odometers are present
         distance = None
@@ -269,20 +264,20 @@ def end_trip(trip_id):
         return jsonify({'success': False, 'message': str(e)}), 500
 
 # ========== UPDATE TRIP (with arrival odometer and totals) ==========
-@trips_bp.route('/<int:trip_id>', methods=['PUT', 'OPTIONS'])
+@trips_bp.route('/<string:trip_id>', methods=['PUT', 'OPTIONS'])
 @login_required
 def update_trip(trip_id):
     if request.method == 'OPTIONS':
         return '', 200
         
     try:
-        trip = Trip.query.get(trip_id)
+        trip = Trip.objects(id=trip_id).first()
         if not trip:
             return jsonify({'success': False, 'message': 'Trip not found'}), 404
         
-        driver = Driver.query.filter_by(user_id=current_user.id).first()
+        driver = Driver.objects(user=current_user.id).first()
         if current_user.role != 'admin':
-            if not driver or trip.driver_id != driver.id:
+            if not driver or trip.driver.id != driver.id:
                 return jsonify({'success': False, 'message': 'Unauthorized'}), 403
         
         data = request.get_json()
@@ -319,27 +314,27 @@ def update_trip(trip_id):
         
         # Update invoices
         if 'invoices' in data:
-            Invoice.query.filter_by(trip_id=trip.id).delete()
+            trip.invoices = []
             for inv in data['invoices']:
                 if inv.get('invoice_no') and inv.get('amount'):
                     try:
-                        invoice = Invoice(trip_id=trip.id, invoice_no=inv['invoice_no'], amount=float(inv['amount']))
-                        db.session.add(invoice)
+                        invoice = Invoice(invoice_no=inv['invoice_no'], amount=float(inv['amount']))
+                        trip.invoices.append(invoice)
                     except:
                         pass
         
         # Update checks
         if 'checks' in data:
-            Check.query.filter_by(trip_id=trip.id).delete()
+            trip.checks = []
             for chk in data['checks']:
                 if chk.get('check_no') and chk.get('amount'):
                     try:
-                        check = Check(trip_id=trip.id, check_no=chk['check_no'], amount=float(chk['amount']))
-                        db.session.add(check)
+                        check = Check(check_no=chk['check_no'], amount=float(chk['amount']))
+                        trip.checks.append(check)
                     except:
                         pass
         
-        db.session.commit()
+        trip.save()
         
         # Compute totals for response
         total_invoices = sum(inv.amount for inv in trip.invoices)
@@ -365,53 +360,52 @@ def update_trip(trip_id):
         return jsonify({'success': False, 'message': str(e)}), 500
 
 # ========== DELETE TRIP ==========
-@trips_bp.route('/<int:trip_id>', methods=['DELETE', 'OPTIONS'])
+@trips_bp.route('/<string:trip_id>', methods=['DELETE', 'OPTIONS'])
 @login_required
 def delete_trip(trip_id):
     if request.method == 'OPTIONS':
         return '', 200
         
     try:
-        trip = Trip.query.get(trip_id)
+        trip = Trip.objects(id=trip_id).first()
         if not trip:
             return jsonify({'success': False, 'message': 'Trip not found'}), 404
         
-        driver = Driver.query.filter_by(user_id=current_user.id).first()
+        driver = Driver.objects(user=current_user.id).first()
         if current_user.role != 'admin':
-            if not driver or trip.driver_id != driver.id:
+            if not driver or trip.driver.id != driver.id:
                 return jsonify({'success': False, 'message': 'Unauthorized'}), 403
         
-        db.session.delete(trip)
-        db.session.commit()
+        trip.delete()
         
         return jsonify({'success': True, 'message': 'Trip deleted'})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
 
 # ========== GET SINGLE TRIP (with details) ==========
-@trips_bp.route('/<int:trip_id>', methods=['GET'])
+@trips_bp.route('/<string:trip_id>', methods=['GET'])
 @login_required
 def get_trip(trip_id):
     try:
-        trip = Trip.query.get(trip_id)
+        trip = Trip.objects(id=trip_id).first()
         if not trip:
             return jsonify({'error': 'Trip not found'}), 404
         
         if current_user.role != 'admin':
-            driver = Driver.query.filter_by(user_id=current_user.id).first()
-            if not driver or trip.driver_id != driver.id:
+            driver = Driver.objects(user=current_user.id).first()
+            if not driver or trip.driver.id != driver.id:
                 return jsonify({'error': 'Unauthorized'}), 403
         
         invoices = []
         total_invoices = 0
         for inv in trip.invoices:
-            invoices.append({'id': inv.id, 'invoice_no': inv.invoice_no, 'amount': inv.amount})
+            invoices.append({'invoice_no': inv.invoice_no, 'amount': inv.amount})
             total_invoices += inv.amount
         
         checks = []
         total_checks = 0
         for chk in trip.checks:
-            checks.append({'id': chk.id, 'check_no': chk.check_no, 'amount': chk.amount})
+            checks.append({'check_no': chk.check_no, 'amount': chk.amount})
             total_checks += chk.amount
         
         # Compute distance
@@ -422,8 +416,8 @@ def get_trip(trip_id):
                 distance = 0
         
         return jsonify({
-            'id': trip.id,
-            'driver_id': trip.driver_id,
+            'id': str(trip.id),
+            'driver_id': str(trip.driver.id) if trip.driver else None,
             'driver_name': trip.driver_name,
             'date': trip.date,
             'helper': trip.helper,
@@ -444,4 +438,4 @@ def get_trip(trip_id):
             'location_lng': trip.location_lng,
         })
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': str(e)}), 500
