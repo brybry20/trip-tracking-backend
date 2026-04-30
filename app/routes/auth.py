@@ -60,6 +60,7 @@ def login():
             'message': 'Invalid credentials'
         }), 401
     except Exception as e:
+        print(f"❌ LOGIN ERROR: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @auth_bp.route('/verify-token', methods=['POST'])

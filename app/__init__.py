@@ -48,6 +48,7 @@ def create_app():
              supports_credentials=True, 
              origins=[
                  "https://trip-tracking-backend.onrender.com",
+                 "https://trip-tracking-backend-egfp.onrender.com",
                  "https://trip-tracking-frontend.onrender.com",
                  "exp://",
                  "http://localhost:19000",
