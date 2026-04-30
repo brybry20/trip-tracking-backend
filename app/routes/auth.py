@@ -199,4 +199,70 @@ def get_all_drivers():
         return jsonify(drivers_list)
     except Exception as e:
         print("Error in get_all_drivers:", str(e))
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': str(e)}), 500
+
+@auth_bp.route('/drivers/<driver_id>', methods=['PUT'])
+@login_required
+def update_driver(driver_id):
+    """Update driver details (Admin only)"""
+    try:
+        if current_user.role != 'admin':
+            return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+        
+        data = request.get_json()
+        driver = Driver.objects(id=driver_id).first()
+        if not driver:
+            return jsonify({'success': False, 'message': 'Driver not found'}), 404
+        
+        # Check if license or email already exists for other drivers
+        if 'license_number' in data and data['license_number'] != driver.license_number:
+            if Driver.objects(license_number=data['license_number'], id__ne=driver_id).first():
+                return jsonify({'success': False, 'message': 'License number already exists'}), 400
+                
+        if 'email' in data and data['email'] != driver.email:
+            if Driver.objects(email=data['email'], id__ne=driver_id).first():
+                return jsonify({'success': False, 'message': 'Email already exists'}), 400
+        
+        # Update driver details
+        driver.full_name = data.get('full_name', driver.full_name)
+        driver.phone = data.get('phone', driver.phone)
+        driver.license_number = data.get('license_number', driver.license_number)
+        driver.email = data.get('email', driver.email)
+        driver.save()
+        
+        # If username is provided, update associated user
+        if 'username' in data and driver.user:
+            if User.objects(username=data['username'], id__ne=driver.user.id).first():
+                return jsonify({'success': False, 'message': 'Username already exists'}), 400
+            driver.user.username = data['username']
+            driver.user.save()
+            
+        return jsonify({'success': True, 'message': 'Driver updated successfully'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@auth_bp.route('/drivers/<driver_id>', methods=['DELETE'])
+@login_required
+def delete_driver(driver_id):
+    """Delete a driver and their associated user account (Admin only)"""
+    try:
+        if current_user.role != 'admin':
+            return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+        
+        driver = Driver.objects(id=driver_id).first()
+        if not driver:
+            return jsonify({'success': False, 'message': 'Driver not found'}), 404
+        
+        # Store user reference
+        user = driver.user
+        
+        # Delete driver record
+        driver.delete()
+        
+        # Delete user account if it exists
+        if user:
+            user.delete()
+            
+        return jsonify({'success': True, 'message': 'Driver and associated account deleted'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
