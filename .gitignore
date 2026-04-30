@@ -1,19 +1,6 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
 venv/
-.venv/
-env/
+__pycache__/
+*.pyc
 .env
-build/
-dist/
-*.egg-info/
-
-# Secret
-.env
-secret.key
-
-# IDE
-.vscode/
-.idea/
+*.db
+!data_2025/trips_2025.db
