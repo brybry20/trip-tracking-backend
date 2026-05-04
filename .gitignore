@@ -3,3 +3,4 @@ __pycache__/
 *.pyc
 *.db
 !data_2025/trips_2025.db
+.env
