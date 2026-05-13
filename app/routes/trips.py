@@ -134,28 +134,16 @@ def create_trip():
         return '', 200
         
     try:
-        data = request.get_json()
+        if current_user.role != 'driver':
+            return jsonify({'success': False, 'message': 'Only drivers can create trips'}), 403
         
-        # If admin, they can specify a driver_id. Otherwise, use current_user.
-        if current_user.role == 'admin':
-            driver_id = data.get('driver_id')
-            if not driver_id:
-                return jsonify({'success': False, 'message': 'Driver ID is required for admin trip creation'}), 400
-            # driver_id here is the Driver object ID, not User ID
-            driver = Driver.objects(id=driver_id).first()
-        else:
-            if current_user.role != 'driver':
-                return jsonify({'success': False, 'message': 'Only drivers or admins can create trips'}), 403
-            driver = Driver.objects(user=current_user.id).first()
-            
+        data = request.get_json()
+        driver = Driver.objects(user=current_user.id).first()
         if not driver:
             return jsonify({'success': False, 'message': 'Driver profile not found'}), 404
         
         now_ph = datetime.now(PH_TIMEZONE)
-        
-        # Allow manual override for date and time if provided (mostly for admin)
-        date_str = data.get('date', now_ph.strftime('%Y-%m-%d'))
-        time_departure_str = data.get('time_departure', now_ph.strftime('%H:%M'))
+        time_departure_str = now_ph.strftime('%H:%M')
         
         location = data.get('location', {})
         
@@ -170,16 +158,13 @@ def create_trip():
         new_trip = Trip(
             driver=driver,
             driver_name=driver.full_name,
-            date=date_str,
+            date=data['date'],
             helper=data.get('helper', ''),
             dealer=data.get('dealer', ''),
             time_departure=time_departure_str,
-            time_arrival=data.get('time_arrival'),
-            time_unload_end=data.get('time_unload_end'),
-            is_completed=data.get('is_completed', False),
+            is_completed=False,
             departure_odometer=departure_odometer,
-            arrival_odometer=data.get('arrival_odometer'),
-            odometer=data.get('arrival_odometer') or departure_odometer,
+            odometer=departure_odometer,  # For backward compatibility
             location_lat=location.get('latitude'),
             location_lng=location.get('longitude'),
         )
