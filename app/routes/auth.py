@@ -67,23 +67,39 @@ def login():
 def verify_token_route():
     """Verify if current token is still valid"""
     try:
-        data = request.get_json()
+        data = request.get_json() or {}
         token = data.get('token')
         
+        # Also check Authorization header if token not in body
         if not token:
+            auth_header = request.headers.get('Authorization')
+            if auth_header and auth_header.startswith('Bearer '):
+                token = auth_header[7:]
+        
+        if not token:
+            print("⚠️ VERIFY-TOKEN: No token provided")
             return jsonify({'valid': False, 'message': 'No token provided'}), 401
         
         payload = verify_token(token)
         if not payload:
+            print(f"⚠️ VERIFY-TOKEN: Token expired or invalid: {token[:10]}...")
             return jsonify({'valid': False, 'message': 'Token expired'}), 401
         
         # Check if token matches database
         user = User.objects(id=payload['user_id']).first()
-        if not user or user.current_token != token:
+        if not user:
+            print(f"⚠️ VERIFY-TOKEN: User not found for ID: {payload.get('user_id')}")
+            return jsonify({'valid': False, 'message': 'User not found'}), 401
+            
+        if user.current_token != token:
+            print(f"⚠️ VERIFY-TOKEN: Token mismatch for user {user.username}")
+            # If the user is authenticated via session, we might allow it? 
+            # But for API we usually want strict token matching.
             return jsonify({'valid': False, 'message': 'Session invalid'}), 401
         
         return jsonify({'valid': True, 'user': {'username': user.username, 'role': user.role}})
     except Exception as e:
+        print(f"❌ VERIFY-TOKEN ERROR: {str(e)}")
         return jsonify({'valid': False, 'message': str(e)}), 500
 
 @auth_bp.route('/logout', methods=['POST'])
