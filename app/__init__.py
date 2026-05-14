@@ -1,7 +1,7 @@
 import os
-from flask import Flask
 import mongoengine as me
 from flask_login import LoginManager
+from flask import Flask, request, jsonify
 from flask_cors import CORS
 from werkzeug.security import generate_password_hash
 from dotenv import load_dotenv
@@ -79,6 +79,30 @@ def create_app():
     
     login_manager.init_app(app)
     login_manager.login_view = 'auth.login'
+    
+    @login_manager.unauthorized_handler
+    def unauthorized():
+        return jsonify({
+            'success': False,
+            'message': 'Unauthorized. Please login.',
+            'error_code': 'UNAUTHORIZED'
+        }), 401
+
+    @login_manager.request_loader
+    def load_user_from_request(request):
+        # Support Bearer token authentication for mobile/API
+        auth_header = request.headers.get('Authorization')
+        if auth_header and auth_header.startswith('Bearer '):
+            token = auth_header[7:]
+            from app.utils.auth import verify_token
+            payload = verify_token(token)
+            if payload:
+                from app.models import User
+                user = User.objects(id=payload['user_id']).first()
+                # Ensure token matches what's stored in DB
+                if user and user.current_token == token:
+                    return user
+        return None
     
     @login_manager.user_loader
     def load_user(user_id):
